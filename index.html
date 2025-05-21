@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>BasketBros Lite - Animated</title>
+  <style>
+    body {
+      background: #111;
+      color: white;
+      font-family: sans-serif;
+      text-align: center;
+    }
+    canvas {
+      display: block;
+      margin: 0 auto;
+      background: #87CEEB;
+      border: 4px solid #000;
+    }
+    .scoreboard {
+      margin: 10px;
+      font-size: 20px;
+    }
+  </style>
+</head>
+<body>
+  <h1>🏀 BasketBros Lite - Animated</h1>
+  <div class="scoreboard">
+    <span id="score1">Red: 0</span> | <span id="score2">Blue: 0</span>
+  </div>
+  <p>Player 1: A/D to move, W to jump, S to shoot</p>
+  <p>Player 2: ←/→ to move, ↑ to jump, ↓ to shoot</p>
+  <canvas id="gameCanvas" width="900" height="500"></canvas>
+
+  <script>
+    const canvas = document.getElementById("gameCanvas");
+    const ctx = canvas.getContext("2d");
+
+    const gravity = 0.5;
+    const floor = canvas.height - 50;
+    let score1 = 0;
+    let score2 = 0;
+
+    const keys = {};
+    const justPressed = {};
+
+    window.addEventListener("keydown", (e) => {
+      if (!keys[e.key]) justPressed[e.key] = true;
+      keys[e.key] = true;
+    });
+
+    window.addEventListener("keyup", (e) => {
+      keys[e.key] = false;
+      justPressed[e.key] = false;
+    });
+
+    class Player {
+      constructor(x, color, keys, spriteSrc) {
+        this.x = x;
+        this.y = floor;
+        this.width = 64;
+        this.height = 64;
+        this.color = color;
+        this.vx = 0;
+        this.vy = 0;
+        this.speed = 4;
+        this.jumpStrength = -11;
+        this.keys = keys;
+        this.onGround = true;
+        this.hasBall = false;
+
+        this.sprite = new Image();
+        this.sprite.src = spriteSrc;
+        this.frame = 0;
+        this.frameTimer = 0;
+        this.frameDelay = 10;
+      }
+
+      update() {
+        this.vy += gravity;
+        this.y += this.vy;
+        this.x += this.vx;
+
+        if (this.y > floor) {
+          this.y = floor;
+          this.vy = 0;
+          this.onGround = true;
+        } else {
+          this.onGround = false;
+        }
+
+        if (this.x < 0) this.x = 0;
+        if (this.x + this.width > canvas.width) this.x = canvas.width - this.width;
+      }
+
+      draw() {
+        if (!this.onGround) {
+          this.frame = 3;
+        } else if (this.vx !== 0) {
+          this.frameTimer++;
+          if (this.frameTimer > this.frameDelay) {
+            this.frame = (this.frame + 1) % 3;
+            this.frameTimer = 0;
+          }
+        } else {
+          this.frame = 0;
+        }
+
+        ctx.drawImage(
+          this.sprite,
+          this.frame * 64, 0, 64, 64,
+          this.x, this.y - this.height, this.width, this.height
+        );
+      }
+
+      shootBall() {
+        if (this.hasBall) {
+          this.hasBall = false;
+          ball.held = false;
+          ball.holder = null;
+          ball.vx = this.color === "red" ? 6 : -6;
+          ball.vy = -8;
+          ball.x = this.x + this.width / 2;
+          ball.y = this.y - this.height / 2;
+        }
+      }
+    }
+
+    const ball = {
+      x: 450,
+      y: 300,
+      radius: 10,
+      vx: 0,
+      vy: 0,
+      held: false,
+      holder: null,
+
+      update() {
+        if (this.held && this.holder) {
+          this.x = this.holder.x + this.holder.width / 2;
+          this.y = this.holder.y - this.holder.height / 2;
+          return;
+        }
+
+        this.vy += gravity;
+        this.x += this.vx;
+        this.y += this.vy;
+
+        if (this.y + this.radius > floor) {
+          this.y = floor - this.radius;
+          this.vy *= -0.6;
+        }
+
+        if (this.x < 0 || this.x > canvas.width) this.vx *= -1;
+
+        // Scoring
+        if (this.y > 200 && this.y < 210 && this.x > 810 && this.x < 840) {
+          score1++;
+          resetGame();
+        }
+        if (this.y > 200 && this.y < 210 && this.x > 60 && this.x < 90) {
+          score2++;
+          resetGame();
+        }
+      },
+
+      draw() {
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+        ctx.fillStyle = "orange";
+        ctx.fill();
+        ctx.stroke();
+      }
+    };
+
+    const player1 = new Player(100, "red", {
+      left: "a", right: "d", up: "w", shoot: "s"
+    }, "red_player.png");
+
+    const player2 = new Player(700, "blue", {
+      left: "ArrowLeft", right: "ArrowRight", up: "ArrowUp", shoot: "ArrowDown"
+    }, "blue_player.png");
+
+    function handlePlayerControls(player) {
+      player.vx = 0;
+      if (keys[player.keys.left]) player.vx = -player.speed;
+      if (keys[player.keys.right]) player.vx = player.speed;
+      if (keys[player.keys.up] && player.onGround) {
+        player.vy = player.jumpStrength;
+        player.onGround = false;
+      }
+      if (justPressed[player.keys.shoot]) {
+        player.shootBall();
+        justPressed[player.keys.shoot] = false;
+      }
+    }
+
+    function checkBallPickup() {
+      [player1, player2].forEach(player => {
+        if (!ball.held && Math.abs(player.x - ball.x) < 40 && Math.abs(player.y - ball.y) < 60) {
+          ball.held = true;
+          ball.holder = player;
+          player.hasBall = true;
+        }
+      });
+    }
+
+    function drawHoops() {
+      ctx.fillStyle = "orange";
+      ctx.fillRect(80, 150, 5, 100);
+      ctx.beginPath();
+      ctx.arc(85, 200, 30, 0, Math.PI);
+      ctx.stroke();
+
+      ctx.fillRect(820, 150, 5, 100);
+      ctx.beginPath();
+      ctx.arc(815, 200, 30, 0, Math.PI);
+      ctx.stroke();
+    }
+
+    function resetGame() {
+      ball.x = 450;
+      ball.y = 300;
+      ball.vx = 0;
+      ball.vy = 0;
+      ball.held = false;
+      ball.holder = null;
+      player1.hasBall = false;
+      player2.hasBall = false;
+      updateScores();
+    }
+
+    function updateScores() {
+      document.getElementById("score1").textContent = `Red: ${score1}`;
+      document.getElementById("score2").textContent = `Blue: ${score2}`;
+    }
+
+    function gameLoop() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      handlePlayerControls(player1);
+      handlePlayerControls(player2);
+
+      player1.update();
+      player2.update();
+      ball.update();
+
+      checkBallPickup();
+
+      drawHoops();
+      player1.draw();
+      player2.draw();
+      ball.draw();
+
+      requestAnimationFrame(gameLoop);
+    }
+
+    gameLoop();
+  </script>
+</body>
+</html>
